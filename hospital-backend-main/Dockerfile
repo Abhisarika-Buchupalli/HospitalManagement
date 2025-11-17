@@ -2,19 +2,28 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /app
 
+# Copy Maven config and download dependencies (cached layer)
 COPY pom.xml .
-# Cache deps to speed up rebuilds
-RUN --mount=type=cache,target=/root/.m2 mvn -B -DskipTests dependency:go-offline
+RUN mvn dependency:go-offline
 
+# Copy source and build the jar
 COPY src ./src
-RUN --mount=type=cache,target=/root/.m2 mvn -B -DskipTests clean install package
+RUN mvn clean package -DskipTests
 
-# ---------- Run stage ----------
-FROM eclipse-temurin:21-jre-alpine
+# ---------- Runtime stage ----------
+FROM eclipse-temurin:21-jre
 WORKDIR /app
 
+# Copy the built jar from build stage
 COPY --from=build /app/target/*.jar app.jar
 
-ENV JAVA_OPTS=""
+# Change this if your backend uses a different port
 EXPOSE 8081
-ENTRYPOINT ["sh","-c","java $JAVA_OPTS -jar app.jar"]
+
+# Optional: database config as env vars
+ENV SPRING_DATASOURCE_URL=jdbc:mysql://host.docker.internal:3306/hospital \
+    SPRING_DATASOURCE_USERNAME=root \
+    SPRING_DATASOURCE_PASSWORD=root \
+    SERVER_PORT=8081
+
+CMD ["java", "-jar", "app.jar"]
